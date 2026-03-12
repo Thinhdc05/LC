@@ -39,6 +39,15 @@ export default function Navbar() {
         >
           Problems
         </Link>
+        <Link
+          to="/learn"
+          className="text-sm transition-colors hidden sm:block"
+          style={{ color: '#8b949e', textDecoration: 'none' }}
+          onMouseEnter={e => (e.target.style.color = '#e6edf3')}
+          onMouseLeave={e => (e.target.style.color = '#8b949e')}
+        >
+          Learn & Notes
+        </Link>
 
         {isLoading ? (
           <div className="w-8 h-8 rounded-full animate-pulse" style={{ background: '#21262d' }} />

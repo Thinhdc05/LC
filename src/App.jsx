@@ -5,7 +5,7 @@ import Problem from './pages/Problem'
 
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={import.meta.env.BASE_URL}>
       <div className="min-h-screen flex flex-col" style={{ background: '#0d1117' }}>
         <Navbar />
         <main className="flex-1">

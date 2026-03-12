@@ -4,6 +4,9 @@ import { db } from '../firebase/firebase'
 import { collection, doc, setDoc, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import remarkMath from 'remark-math'
+import rehypeKatex from 'rehype-katex'
+import 'katex/dist/katex.min.css'
 import guidesData from '../data/guides.json'
 
 export default function Learn() {
@@ -230,7 +233,10 @@ export default function Learn() {
                 <div className="flex flex-col">
                   <div className="text-xs font-semibold mb-2 uppercase text-[#8b949e]">Live Preview</div>
                   <div className="flex-1 w-full p-6 rounded-lg bg-[#0d1117] border border-[#30363d] overflow-y-auto prose prose-invert prose-headings:text-[#e6edf3] prose-p:text-[#c9d1d9] prose-a:text-[#58a6ff] prose-code:text-[#ff7b72] prose-code:bg-[#161b22] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    <ReactMarkdown 
+                      remarkPlugins={[remarkGfm, remarkMath]} 
+                      rehypePlugins={[rehypeKatex]}
+                    >
                       {noteContent || '*Preview will appear here...*'}
                     </ReactMarkdown>
                   </div>
@@ -239,7 +245,10 @@ export default function Learn() {
             ) : (
               // Guide Viewer
               <div className="prose prose-invert prose-lg prose-headings:text-[#e6edf3] prose-p:text-[#c9d1d9] prose-a:text-[#58a6ff] prose-code:text-[#ff7b72] prose-code:bg-[#161b22] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-[#161b22] prose-pre:border prose-pre:border-[#30363d] max-w-none">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm, remarkMath]} 
+                  rehypePlugins={[rehypeKatex]}
+                >
                   {activeItem.content}
                 </ReactMarkdown>
               </div>

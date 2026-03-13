@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import Editor from '@monaco-editor/react'
 import problems from '../data/problems.json'
 import { useAuth } from '../context/AuthContext'
+import { useSettings } from '../context/SettingsContext'
 import { db } from '../firebase/firebase'
 import { doc, setDoc, getDoc } from 'firebase/firestore'
 
@@ -143,6 +144,7 @@ export default function Problem() {
   const navigate = useNavigate()
   const problem = problems.find(p => p.id === id)
   const { currentUser } = useAuth() || {}
+  const { isBrainMode } = useSettings()
 
   const [language, setLanguage] = useState('python')
   const [code, setCode] = useState(STARTER_CODE['python'])
@@ -155,8 +157,13 @@ export default function Problem() {
   const [isSaved, setIsSaved] = useState(false)
   const [isSolved, setIsSolved] = useState(false)
   const [savingStatus, setSavingStatus] = useState('') // 'saving' | 'saved' | ''
+  const [showMistakes, setShowMistakes] = useState(false)
+  const [mistakes, setMistakes] = useState('')
+  const [confidence, setConfidence] = useState(null)
+  
   const editorRef = useRef(null)
   const autoSaveTimer = useRef(null)
+  const mistakesTimer = useRef(null)
 
   // Load saved draft from Firestore on open
   useEffect(() => {
@@ -168,6 +175,8 @@ export default function Problem() {
         if (data.code) setCode(data.code)
         if (data.language) setLanguage(data.language)
         if (data.solved) setIsSolved(data.solved)
+        if (data.mistakes) setMistakes(data.mistakes)
+        if (data.confidence) setConfidence(data.confidence)
       }
     }).catch(console.error)
   }, [currentUser, id])
@@ -177,6 +186,7 @@ export default function Problem() {
     setShowHints(false)
     setHintIndex(0)
     setShowSolution(false)
+    setShowMistakes(false)
     setOutput(null)
     setRunError(null)
     setSavingStatus('')
@@ -205,17 +215,41 @@ export default function Problem() {
     }, 1500)
   }, [currentUser, id, language])
 
-  const handleMarkSolved = useCallback(async () => {
-    const newVal = !isSolved
-    setIsSolved(newVal)
+  const updateConfidence = useCallback(async (level) => {
+    setConfidence(level)
+    setIsSolved(true)
     if (!currentUser) return
     try {
+      const days = level === 'Easy' ? 14 : level === 'Medium' ? 5 : 1
+      const nextDate = new Date()
+      nextDate.setDate(nextDate.getDate() + days)
+      
       const docRef = doc(db, 'users', currentUser.uid, 'problems', id)
-      await setDoc(docRef, { solved: newVal, solvedAt: newVal ? new Date().toISOString() : null }, { merge: true })
+      await setDoc(docRef, { 
+        solved: true, 
+        confidence: level, 
+        nextReviewDate: nextDate.toISOString(),
+        solvedAt: new Date().toISOString() 
+      }, { merge: true })
     } catch (e) {
-      console.error('Failed to update solved status', e)
+      console.error('Failed to update confidence status', e)
     }
-  }, [currentUser, id, isSolved])
+  }, [currentUser, id])
+
+  const handleMistakesChange = useCallback((e) => {
+    const val = e.target.value
+    setMistakes(val)
+    if (!currentUser) return
+    clearTimeout(mistakesTimer.current)
+    mistakesTimer.current = setTimeout(async () => {
+      try {
+        const docRef = doc(db, 'users', currentUser.uid, 'problems', id)
+        await setDoc(docRef, { mistakes: val, updatedAt: new Date().toISOString() }, { merge: true })
+      } catch (err) {
+        console.error('Failed to save mistakes', err)
+      }
+    }, 1500)
+  }, [currentUser, id])
 
   const handleLanguageChange = useCallback(async (e) => {
     const lang = e.target.value
@@ -302,15 +336,27 @@ export default function Problem() {
               <div>
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <h1 className="text-xl font-bold" style={{ color: '#e6edf3' }}>{problem.title}</h1>
-                  <DifficultyBadge difficulty={problem.difficulty} />
+                  {isBrainMode ? (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold opacity-50 cursor-help" title="Brain mode is active" style={{ color: '#8b949e', background: '#21262d', border: '1px dotted #30363d' }}>
+                      ?
+                    </span>
+                  ) : (
+                    <DifficultyBadge difficulty={problem.difficulty} />
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1.5 mt-2">
-                  {problem.tags.map(tag => (
-                    <span key={tag} className="px-2 py-0.5 rounded text-xs font-medium"
-                      style={{ background: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}>
-                      {tag}
+                  {isBrainMode ? (
+                    <span className="px-2 py-0.5 rounded text-xs font-medium italic opacity-50 cursor-help" title="Brain mode is active" style={{ background: '#21262d', color: '#8b949e', border: '1px dotted #30363d' }}>
+                      ???
                     </span>
-                  ))}
+                  ) : (
+                    problem.tags.map(tag => (
+                      <span key={tag} className="px-2 py-0.5 rounded text-xs font-medium"
+                        style={{ background: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}>
+                        {tag}
+                      </span>
+                    ))
+                  )}
                 </div>
               </div>
             </div>
@@ -391,6 +437,39 @@ export default function Problem() {
                 </div>
               )}
             </div>
+
+            {/* Mistakes & Lessons section */}
+            <div className="rounded-xl overflow-hidden" style={{ border: '1px solid #30363d' }}>
+              <button
+                onClick={() => setShowMistakes(!showMistakes)}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium transition-colors"
+                style={{ background: '#161b22', color: showMistakes ? '#f85149' : '#8b949e' }}
+              >
+                <span className="flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Error Log (Mistakes & Lessons)
+                </span>
+                <svg className={`w-4 h-4 transition-transform ${showMistakes ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showMistakes && (
+                <div className="p-3" style={{ background: 'rgba(248,81,73,0.05)' }}>
+                  <textarea
+                    value={mistakes}
+                    onChange={handleMistakesChange}
+                    placeholder="- What edge cases did you miss? (e.g., n=0, empty array)&#10;- Note the time/space constraints you failed on&#10;- Describe any 'Aha!' moments..."
+                    className="w-full h-32 p-3 text-sm outline-none rounded-lg resize-none font-mono"
+                    style={{ background: '#0d1117', color: '#e6edf3', border: '1px solid #30363d' }}
+                  />
+                  <div className="text-right mt-1">
+                    <span className="text-xs text-gray-500">Auto-saved to Firestore</span>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -430,21 +509,28 @@ export default function Problem() {
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Mark as Solved */}
-              <button
-                onClick={handleMarkSolved}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                style={{
-                  background: isSolved ? 'rgba(63,185,80,0.15)' : 'transparent',
-                  color: isSolved ? '#3fb950' : '#8b949e',
-                  border: `1px solid ${isSolved ? 'rgba(63,185,80,0.4)' : '#30363d'}`,
-                }}
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {isSolved ? 'Solved ✓' : 'Mark Solved'}
-              </button>
+              {/* Mark as Solved / Spaced Repetition */}
+              {isSolved ? (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium" style={{ background: 'rgba(63,185,80,0.1)', border: '1px solid rgba(63,185,80,0.3)' }}>
+                  <span className="mr-1 text-[#3fb950] flex items-center gap-1" title="Marked as solved">
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  </span>
+                  <button onClick={() => updateConfidence('Easy')} className={`px-2 py-1 rounded transition-colors ${confidence === 'Easy' ? 'bg-[#3fb950] text-[#0d1117]' : 'hover:bg-[#2ea043] hover:text-white text-[#8b949e]'}`} title="Next review: 14 days">Easy</button>
+                  <button onClick={() => updateConfidence('Medium')} className={`px-2 py-1 rounded transition-colors ${confidence === 'Medium' ? 'bg-[#d29922] text-[#0d1117]' : 'hover:bg-[#d29922] hover:text-white text-[#8b949e]'}`} title="Next review: 5 days">Mid</button>
+                  <button onClick={() => updateConfidence('Hard')} className={`px-2 py-1 rounded transition-colors ${confidence === 'Hard' ? 'bg-[#f85149] text-[#fff]' : 'hover:bg-[#f85149] hover:text-white text-[#8b949e]'}`} title="Next review: Tomorrow">Hard</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => updateConfidence('Medium')}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:bg-[#21262d] hover:text-[#e6edf3]"
+                  style={{ background: 'transparent', color: '#8b949e', border: '1px solid #30363d' }}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Mark Solved
+                </button>
+              )}
 
               <button
                 onClick={handleRunCode}

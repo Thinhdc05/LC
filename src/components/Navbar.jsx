@@ -1,8 +1,12 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useSettings } from '../context/SettingsContext'
+import problemsData from '../data/problems.json'
 
 export default function Navbar() {
   const auth = useAuth()
+  const { isBrainMode, setIsBrainMode } = useSettings()
+  const navigate = useNavigate()
   const currentUser = auth?.currentUser
   const signInWithGoogle = auth?.signInWithGoogle
   const logout = auth?.logout
@@ -48,6 +52,38 @@ export default function Navbar() {
         >
           Learn & Notes
         </Link>
+
+        {/* Brain Training Features */}
+        <button
+          onClick={() => {
+            const randomProb = problemsData[Math.floor(Math.random() * problemsData.length)]
+            navigate(`/problem/${randomProb.id}`)
+          }}
+          className="text-sm transition-colors hidden sm:flex items-center gap-1 hover:text-white"
+          style={{ color: '#8b949e', background: 'transparent', border: 'none', cursor: 'pointer' }}
+          onMouseEnter={e => (e.currentTarget.style.color = '#e6edf3')}
+          onMouseLeave={e => (e.currentTarget.style.color = '#8b949e')}
+          title="Pick a Random Problem"
+        >
+          🎲 Random
+        </button>
+
+        <button
+          onClick={() => setIsBrainMode(!isBrainMode)}
+          className="text-sm transition-colors flex items-center gap-2 px-2 py-1 rounded-md"
+          style={{ 
+            color: isBrainMode ? '#c9d1d9' : '#8b949e', 
+            background: isBrainMode ? '#21262d' : 'transparent',
+            border: `1px solid ${isBrainMode ? '#30363d' : 'transparent'}`,
+            cursor: 'pointer' 
+          }}
+          title="Brain Mode: Hide tags & difficulty"
+        >
+          🧠 Brain
+          <div className={`w-8 h-4 rounded-full flex items-center p-0.5 transition-colors ${isBrainMode ? 'bg-[#2ea043]' : 'bg-[#30363d]'}`}>
+            <div className={`w-3 h-3 rounded-full bg-white transition-transform ${isBrainMode ? 'translate-x-4' : 'translate-x-0'}`} />
+          </div>
+        </button>
 
         {isLoading ? (
           <div className="w-8 h-8 rounded-full animate-pulse" style={{ background: '#21262d' }} />

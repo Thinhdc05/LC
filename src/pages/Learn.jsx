@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { db } from '../firebase/firebase'
 import { collection, doc, setDoc, getDocs, deleteDoc, serverTimestamp } from 'firebase/firestore'
@@ -8,8 +9,10 @@ import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
 import guidesData from '../data/guides.json'
+import problemsData from '../data/problems.json'
 
 export default function Learn() {
+  const navigate = useNavigate()
   const { currentUser } = useAuth()
   const [activeItem, setActiveItem] = useState(guidesData[0]) // can be a guide or a note
   const [notes, setNotes] = useState([])
@@ -244,13 +247,60 @@ export default function Learn() {
               </div>
             ) : (
               // Guide Viewer
-              <div className="prose prose-invert prose-lg prose-headings:text-[#e6edf3] prose-p:text-[#c9d1d9] prose-a:text-[#58a6ff] prose-code:text-[#ff7b72] prose-code:bg-[#161b22] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-[#161b22] prose-pre:border prose-pre:border-[#30363d] max-w-none">
-                <ReactMarkdown 
-                  remarkPlugins={[remarkGfm, remarkMath]} 
-                  rehypePlugins={[rehypeKatex]}
-                >
-                  {activeItem.content}
-                </ReactMarkdown>
+              <div className="flex flex-col gap-8 pb-12">
+                <div className="prose prose-invert prose-lg prose-headings:text-[#e6edf3] prose-p:text-[#c9d1d9] prose-a:text-[#58a6ff] prose-code:text-[#ff7b72] prose-code:bg-[#161b22] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-pre:bg-[#161b22] prose-pre:border prose-pre:border-[#30363d] max-w-none">
+                  <ReactMarkdown 
+                    remarkPlugins={[remarkGfm, remarkMath]} 
+                    rehypePlugins={[rehypeKatex]}
+                  >
+                    {activeItem.content}
+                  </ReactMarkdown>
+                </div>
+
+                {/* Related Problems Section */}
+                {activeItem.relatedProblems && activeItem.relatedProblems.length > 0 && (
+                  <div className="border-t pt-6" style={{ borderColor: '#30363d' }}>
+                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2" style={{ color: '#e6edf3' }}>
+                      <span className="text-xl">🧩</span> Related Problems to Practice
+                    </h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {activeItem.relatedProblems.map(probId => {
+                        const p = problemsData.find(x => x.id === probId)
+                        if (!p) return null
+                        return (
+                          <button
+                            key={probId}
+                            onClick={() => navigate(`/problem/${p.id}`)}
+                            className="flex items-center justify-between text-left px-4 py-3 rounded-xl border transition-all hover:-translate-y-0.5"
+                            style={{ background: '#161b22', borderColor: '#30363d' }}
+                            onMouseEnter={e => {
+                              e.currentTarget.style.borderColor = '#7c3aed'
+                              e.currentTarget.style.background = 'rgba(124,58,237,0.05)'
+                            }}
+                            onMouseLeave={e => {
+                              e.currentTarget.style.borderColor = '#30363d'
+                              e.currentTarget.style.background = '#161b22'
+                            }}
+                          >
+                            <div className="flex flex-col gap-1">
+                              <span className="text-sm font-semibold" style={{ color: '#e6edf3' }}>{p.title}</span>
+                              <div className="flex gap-2 text-xs">
+                                <span style={{ color: p.difficulty === 'Easy' ? '#3fb950' : p.difficulty === 'Medium' ? '#d29922' : '#f85149', fontWeight: '600' }}>
+                                  {p.difficulty}
+                                </span>
+                                <span style={{ color: '#8b949e' }}>•</span>
+                                <span style={{ color: '#8b949e' }}>{p.tags[0]}</span>
+                              </div>
+                            </div>
+                            <svg className="w-5 h-5 text-[#8b949e]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

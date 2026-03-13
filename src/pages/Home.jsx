@@ -1,5 +1,9 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { db } from '../firebase/firebase'
+import { collection, getDocs } from 'firebase/firestore'
+import { useSettings } from '../context/SettingsContext'
 import problems from '../data/problems.json'
 
 const DIFFICULTY_CONFIG = {
@@ -42,7 +46,30 @@ export default function Home() {
   const [search, setSearch] = useState('')
   const [difficultyFilter, setDifficultyFilter] = useState('All')
   const [selectedTags, setSelectedTags] = useState([])
+  const [filterReview, setFilterReview] = useState(false)
+  const [userProgress, setUserProgress] = useState({})
+  
+  const { isBrainMode } = useSettings()
+  const { currentUser } = useAuth() || {}
   const navigate = useNavigate()
+
+  useEffect(() => {
+    if (!currentUser) {
+      setUserProgress({})
+      return
+    }
+    const fetchProgress = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'users', currentUser.uid, 'problems'))
+        const progress = {}
+        snap.forEach(doc => { progress[doc.id] = doc.data() })
+        setUserProgress(progress)
+      } catch (err) {
+        console.error("Failed to fetch user progress", err)
+      }
+    }
+    fetchProgress()
+  }, [currentUser])
 
   const toggleTag = (tag) => {
     setSelectedTags(prev =>
@@ -55,9 +82,14 @@ export default function Home() {
       const matchSearch = p.title.toLowerCase().includes(search.toLowerCase())
       const matchDiff = difficultyFilter === 'All' || p.difficulty === difficultyFilter
       const matchTags = selectedTags.length === 0 || selectedTags.every(t => p.tags.includes(t))
-      return matchSearch && matchDiff && matchTags
+      
+      const pData = userProgress[p.id]
+      const isReviewDue = pData?.nextReviewDate && new Date(pData.nextReviewDate) <= new Date()
+      const matchReview = !filterReview || isReviewDue
+
+      return matchSearch && matchDiff && matchTags && matchReview
     })
-  }, [search, difficultyFilter, selectedTags])
+  }, [search, difficultyFilter, selectedTags, filterReview, userProgress])
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -80,6 +112,26 @@ export default function Home() {
         className="rounded-xl p-5 mb-6 flex flex-col gap-4"
         style={{ background: '#161b22', border: '1px solid #30363d' }}
       >
+        {/* Toggle Review Filter */}
+        {currentUser && (
+          <div className="flex gap-3 items-center">
+            <button
+              onClick={() => setFilterReview(!filterReview)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border"
+              style={{
+                background: filterReview ? 'rgba(63,185,80,0.15)' : 'transparent',
+                color: filterReview ? '#3fb950' : '#8b949e',
+                borderColor: filterReview ? 'rgba(63,185,80,0.4)' : '#30363d'
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Needs Review Today
+            </button>
+          </div>
+        )}
+
         {/* Search + Difficulty row */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -107,45 +159,49 @@ export default function Home() {
             />
           </div>
 
-          <select
-            value={difficultyFilter}
-            onChange={e => setDifficultyFilter(e.target.value)}
-            className="px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
-            style={{
-              background: '#0d1117',
-              border: '1px solid #30363d',
-              color: '#e6edf3',
-              minWidth: '140px',
-            }}
-          >
-            <option value="All">All Difficulties</option>
-            <option value="Easy">Easy</option>
-            <option value="Medium">Medium</option>
-            <option value="Hard">Hard</option>
-          </select>
+          {!isBrainMode && (
+            <select
+              value={difficultyFilter}
+              onChange={e => setDifficultyFilter(e.target.value)}
+              className="px-3 py-2 rounded-lg text-sm outline-none cursor-pointer"
+              style={{
+                background: '#0d1117',
+                border: '1px solid #30363d',
+                color: '#e6edf3',
+                minWidth: '140px',
+              }}
+            >
+              <option value="All">All Difficulties</option>
+              <option value="Easy">Easy</option>
+              <option value="Medium">Medium</option>
+              <option value="Hard">Hard</option>
+            </select>
+          )}
         </div>
 
         {/* Tag filters */}
-        <div className="flex flex-wrap gap-2 items-center">
-          <span className="text-xs font-medium" style={{ color: '#6e7681' }}>Tags:</span>
-          {ALL_TAGS.map(tag => (
-            <TagBadge
-              key={tag}
-              tag={tag}
-              active={selectedTags.includes(tag)}
-              onClick={() => toggleTag(tag)}
-            />
-          ))}
-          {selectedTags.length > 0 && (
-            <button
-              onClick={() => setSelectedTags([])}
-              className="text-xs underline transition-colors"
-              style={{ color: '#f85149' }}
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        {!isBrainMode && (
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs font-medium" style={{ color: '#6e7681' }}>Tags:</span>
+            {ALL_TAGS.map(tag => (
+              <TagBadge
+                key={tag}
+                tag={tag}
+                active={selectedTags.includes(tag)}
+                onClick={() => toggleTag(tag)}
+              />
+            ))}
+            {selectedTags.length > 0 && (
+              <button
+                onClick={() => setSelectedTags([])}
+                className="text-xs underline transition-colors"
+                style={{ color: '#f85149' }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Stats row */}
@@ -209,6 +265,7 @@ export default function Home() {
               key={problem.id}
               problem={problem}
               index={idx}
+              progress={userProgress[problem.id]}
               onClick={() => navigate(`/problem/${problem.id}`)}
             />
           ))
@@ -218,8 +275,9 @@ export default function Home() {
   )
 }
 
-function ProblemRow({ problem, index, onClick }) {
+function ProblemRow({ problem, index, progress, onClick }) {
   const [hovered, setHovered] = useState(false)
+  const { isBrainMode } = useSettings()
 
   return (
     <div
@@ -241,28 +299,50 @@ function ProblemRow({ problem, index, onClick }) {
 
       {/* Title */}
       <span
-        className="text-sm font-medium transition-colors"
+        className="text-sm font-medium transition-colors flex items-center gap-2"
         style={{ color: hovered ? '#7c3aed' : '#e6edf3' }}
       >
         {problem.title}
+        {progress?.solved && (
+          <svg className="w-4 h-4 text-[#3fb950]" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="Solved">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+        )}
+        {progress?.nextReviewDate && new Date(progress.nextReviewDate) <= new Date() && (
+          <svg className="w-4 h-4 text-[#d29922]" fill="none" viewBox="0 0 24 24" stroke="currentColor" title="Needs Review">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        )}
       </span>
 
       {/* Tags (hidden on very small screens) */}
       <div className="hidden sm:flex flex-wrap gap-1 justify-end pr-4">
-        {problem.tags.slice(0, 3).map(tag => (
-          <span
-            key={tag}
-            className="text-xs px-2 py-0.5 rounded"
-            style={{ background: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}
-          >
-            {tag}
+        {isBrainMode ? (
+          <span className="text-xs px-2 py-0.5 rounded italic opacity-50" style={{ background: '#21262d', color: '#8b949e', border: '1px dotted #30363d' }}>
+            ???
           </span>
-        ))}
+        ) : (
+          problem.tags.slice(0, 3).map(tag => (
+            <span
+              key={tag}
+              className="text-xs px-2 py-0.5 rounded"
+              style={{ background: '#21262d', color: '#8b949e', border: '1px solid #30363d' }}
+            >
+              {tag}
+            </span>
+          ))
+        )}
       </div>
 
       {/* Difficulty */}
       <div className="flex justify-end">
-        <DifficultyBadge difficulty={problem.difficulty} />
+        {isBrainMode ? (
+          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold opacity-50" style={{ color: '#8b949e', background: '#21262d', border: '1px dotted #30363d' }}>
+            ?
+          </span>
+        ) : (
+          <DifficultyBadge difficulty={problem.difficulty} />
+        )}
       </div>
     </div>
   )
